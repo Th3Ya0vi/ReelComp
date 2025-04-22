@@ -53,11 +53,15 @@ class YouTubeUploader:
             credentials = None
             
             # Check if token file exists
+            import json
+            # Persistent YouTube OAuth: only prompt if no valid token or refresh fails
             if os.path.exists(self.youtube_config.token_path):
                 logger.info("Loading credentials from token file")
                 try:
+                    with open(self.youtube_config.token_path, 'r') as token_file:
+                        info = json.load(token_file)
                     credentials = Credentials.from_authorized_user_info(
-                        info=eval(open(self.youtube_config.token_path, 'r').read()),
+                        info=info,
                         scopes=self.SCOPES
                     )
                 except Exception as e:
@@ -68,7 +72,12 @@ class YouTubeUploader:
                 if credentials and credentials.expired and credentials.refresh_token:
                     try:
                         logger.info("Refreshing expired credentials")
-                        credentials.refresh()
+                        from google.auth.transport.requests import Request
+                        credentials.refresh(Request())
+                        # Save refreshed credentials
+                        with open(self.youtube_config.token_path, 'w') as token:
+                            token.write(credentials.to_json())
+                        logger.info("Refreshed and saved credentials.")
                     except Exception as e:
                         logger.error(f"Error refreshing credentials: {str(e)}")
                         credentials = None
@@ -90,7 +99,8 @@ class YouTubeUploader:
                         
                         # Save the credentials for future use
                         with open(self.youtube_config.token_path, 'w') as token:
-                            token.write(str(credentials.to_json()))
+                            import json
+                            token.write(credentials.to_json())
                         logger.info(f"Credentials saved to {self.youtube_config.token_path}")
                     except Exception as e:
                         logger.error(f"Authentication error: {str(e)}")

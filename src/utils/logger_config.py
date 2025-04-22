@@ -29,10 +29,10 @@ def setup_logger(level: str = "INFO", log_dir: str = "logs") -> None:
     # Clear default handlers
     logger.remove()
     
-    # Add console handler
+    # Always show INFO and above in the console, regardless of file log level
     logger.add(
-        sys.stderr,
-        level=level,
+        sys.stdout,
+        level="INFO",
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
     )
     

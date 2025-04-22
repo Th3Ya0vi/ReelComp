@@ -27,6 +27,8 @@ class ShortsGenerator:
     - Max duration of 60 seconds
     """
     
+    MAX_SHORT_DURATION = 60.0  # YouTube Shorts must be 60s or less
+
     def __init__(self, config: Optional[Config] = None, file_manager: Optional[FileManager] = None):
         """
         Initialize the YouTube Shorts generator.
@@ -40,6 +42,12 @@ class ShortsGenerator:
         self.config = config or ConfigLoader().get_config()
         self.file_manager = file_manager or FileManager(self.config)
     
+    def _clamp_duration(self, duration: float) -> float:
+        """
+        Clamp the duration to the maximum allowed for YouTube Shorts.
+        """
+        return min(duration, self.MAX_SHORT_DURATION)
+
     async def create_short_from_compilation(
         self,
         compilation_path: str,
@@ -79,12 +87,11 @@ class ShortsGenerator:
             
             # Load the compilation video
             with VideoFileClip(compilation_path) as clip:
-                # Select a portion if the compilation is too long
+                # Always clamp max_duration to 59.0s for Shorts
+                max_duration = min(59.0, self._clamp_duration(max_duration))
+                # Enforce Shorts duration limit
                 if clip.duration > max_duration:
-                    logger.info(f"Compilation video is {clip.duration:.1f}s, truncating to {max_duration:.1f}s")
-                    
-                    # Take the first part of the compilation, ensuring we include complete clips
-                    # This is a simple approach - could be enhanced to select the best segments
+                    logger.warning(f"Shorts upload duration limit is 59s. Truncating {clip.duration:.1f}s to 59.0s.")
                     clip = clip.subclip(0, max_duration)
                 
                 # Ensure vertical format (9:16 aspect ratio)
@@ -132,6 +139,8 @@ class ShortsGenerator:
         max_duration: float = 59.0,
         include_branding: bool = True
     ) -> List[str]:
+        # Clamp max_duration to Shorts limit
+        max_duration = self._clamp_duration(max_duration)
         """
         Create YouTube Shorts from a list of TikTok videos.
         
@@ -176,6 +185,8 @@ class ShortsGenerator:
         max_duration: float = 59.0,
         include_branding: bool = True
     ) -> Optional[str]:
+        # Clamp max_duration to Shorts limit
+        max_duration = self._clamp_duration(max_duration)
         """
         Create a YouTube Short from a TikTok video.
         

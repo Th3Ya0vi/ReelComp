@@ -77,6 +77,8 @@ class CompilationApp:
         title: Optional[str] = None,
         description: Optional[str] = None,
         upload_to_youtube: bool = False,
+        upload_compilation: bool = False,
+        upload_shorts: bool = False,
         generate_shorts: bool = False,
         compilation_short: bool = False,
         max_videos: Optional[int] = None,
@@ -91,6 +93,8 @@ class CompilationApp:
             title: Title for the compilation video
             description: Description for the compilation video
             upload_to_youtube: Whether to upload the compilation to YouTube
+            upload_compilation: Whether to upload the compilation video to YouTube
+            upload_shorts: Whether to upload the Shorts video to YouTube
             generate_shorts: Whether to generate YouTube Shorts from individual videos
             compilation_short: Whether to generate a YouTube Short from the compilation
             max_videos: Maximum number of videos to include in the compilation
@@ -172,71 +176,43 @@ class CompilationApp:
             
             # 4. Generate YouTube Shorts
             shorts_paths = []
-            
-            # 4a. Generate a Short from the compilation if requested
-            if compilation_short:
-                logger.info("Generating YouTube Short from compilation...")
+
+            # Always create only ONE Shorts video from the compilation if any Shorts flag is set
+            shorts_flag = generate_shorts or compilation_short
+            short_path = None
+            if shorts_flag:
+                logger.info("Generating a single YouTube Shorts video from the compilation...")
                 short_path = await self.shorts_generator.create_short_from_compilation(
                     compilation_path=compilation_path,
                     title=title,
                     max_duration=59.0,  # YouTube Shorts limit is 60 seconds
                     include_branding=True
                 )
-                
                 if short_path:
                     shorts_paths.append(short_path)
                     logger.success(f"Generated YouTube Short from compilation: {short_path}")
                 else:
                     logger.warning("Failed to generate YouTube Short from compilation")
-            
-            # 4b. Generate Shorts from individual videos if requested
-            elif generate_shorts:
-                logger.info("Generating YouTube Shorts from individual videos...")
-                individual_shorts = await self.shorts_generator.create_shorts_from_videos(
-                    video_metadata_list,
-                    max_duration=59.0,  # YouTube Shorts limit is 60 seconds
-                    include_branding=True
-                )
-                
-                if individual_shorts:
-                    shorts_paths.extend(individual_shorts)
-                    logger.success(f"Generated {len(individual_shorts)} YouTube Shorts from individual videos")
-                else:
-                    logger.warning("Failed to generate any YouTube Shorts from individual videos")
-            
-            # 5. Upload to YouTube if requested
+
+            # 5. Upload to YouTube based on user choice
+            # Default: upload compilation if neither flag is set
             if upload_to_youtube:
-                logger.info("Authenticating with YouTube...")
-                if not self.youtube_uploader.authenticate():
-                    logger.error("YouTube authentication failed")
-                    return compilation_path, shorts_paths
-                
-                logger.info("Uploading compilation to YouTube...")
-                video_id = self.youtube_uploader.upload_video(
-                    video_path=compilation_path,
-                    title=title,
-                    description=description,
-                    tags=["tiktok", "compilation", "highlights", "trending"],
-                    privacy_status=self.config.youtube.privacy_status,
-                    thumbnail_path=thumbnail_path
-                )
-                
-                if video_id:
-                    logger.success(f"Video uploaded to YouTube with ID: {video_id}")
-                    
-                    # Create or update playlist
-                    playlist_name = f"TikTok Compilations"
-                    playlist_id = self.youtube_uploader.create_playlist(
-                        title=playlist_name,
-                        description="Automated TikTok compilations",
-                        privacy_status=self.config.youtube.privacy_status
+                if (upload_compilation or (not upload_compilation and not upload_shorts)) and compilation_path:
+                    logger.info("Uploading compilation video to YouTube...")
+                    await self.youtube_uploader.upload_video(
+                        compilation_path,
+                        title=title,
+                        description=description,
+                        thumbnail_path=thumbnail_path
                     )
-                    
-                    if playlist_id:
-                        self.youtube_uploader.add_to_playlist(playlist_id, video_id)
-                        logger.info(f"Added to playlist: {playlist_name}")
-                else:
-                    logger.error("Failed to upload to YouTube")
+                if upload_shorts and short_path:
+                    logger.info("Uploading Shorts video to YouTube...")
+                    await self.youtube_uploader.upload_video(
+                        short_path,
+                        title=f"Shorts: {title}" if title else None,
+                        description=description,
+                        thumbnail_path=thumbnail_path
+                    )
             
             # 6. Update processed URLs database to mark successfully processed URLs
             if processed_urls:
@@ -248,20 +224,25 @@ class CompilationApp:
             self.file_manager.cleanup_temp_files()
             
             return compilation_path, shorts_paths
-            
+        
         except Exception as e:
-            logger.error(f"Error in compilation pipeline: {str(e)}")
+            logger.error(f"Error during pipeline execution: {e}")
             return None, []
-
-
+        
+        finally:
+            # Ensure cleanup is performed even if an exception occurs
+            self.file_manager.cleanup_temp_files()
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="TikTok Compilation Automation")
     
     # Required arguments
-    url_group = parser.add_mutually_exclusive_group(required=True)
+    url_group = parser.add_mutually_exclusive_group(required=False)
     url_group.add_argument("--urls", "-u", help="Path to a text file containing TikTok URLs")
     url_group.add_argument("--url-list", "-l", nargs="+", help="List of TikTok URLs")
+    parser.add_argument("--auto-fetch", action="store_true", help="Automatically fetch new TikTok URLs if none are provided.")
+    parser.add_argument("--fetch-hashtag", default="funny", help="Hashtag to use when auto-fetching TikTok URLs (default: funny)")
+    parser.add_argument("--fetch-count", type=int, default=10, help="Number of TikTok URLs to fetch when auto-fetching (default: 10)")
     
     # Optional arguments
     parser.add_argument("--config", "-c", help="Path to a configuration file")
@@ -272,12 +253,20 @@ def parse_args():
                       help="Maximum number of videos to include in the compilation (default: 50)")
     
     # Shorts options
+    # Only one Shorts video will be created, which is a short version of the compilation.
     shorts_group = parser.add_mutually_exclusive_group()
     shorts_group.add_argument("--generate-shorts", "-s", action="store_true", 
-                       help="Generate YouTube Shorts from individual videos")
+                       help="[DEPRECATED: see --shorts] Generate a YouTube Short from the compilation video (now default behavior)")
     shorts_group.add_argument("--compilation-short", "-cs", action="store_true",
-                       help="Generate a YouTube Short from the compilation video")
+                       help="[DEPRECATED: see --shorts] Generate a YouTube Short from the compilation video (now default behavior)")
+    parser.add_argument("--shorts", action="store_true", help="Create a single Shorts video from the compilation (default if any Shorts flag is set)")
     
+    upload_group = parser.add_mutually_exclusive_group()
+    upload_group.add_argument("--upload-compilation", action="store_true", help="Upload the long-form compilation video to YouTube (default)")
+    upload_group.add_argument("--upload-shorts", action="store_true", help="Upload the Shorts video (vertical, <=59s) to YouTube")
+    upload_group.add_argument("--upload-both", action="store_true", help="Upload both the compilation and Shorts video to YouTube")
+    parser.add_argument("--upload-existing-path", type=str, default=None, help="Path to an existing video file to upload directly to YouTube (bypasses TikTok/compilation pipeline)")
+
     parser.add_argument("--log-level", "-v", 
                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                        default="INFO",
@@ -292,22 +281,63 @@ def parse_args():
 
 async def main():
     """Main entry point for the application."""
-    # Parse command-line arguments
+    import importlib
     args = parse_args()
     
     # Setup logging
     setup_logger(args.log_level)
     
+    # Direct upload of existing video file if specified
+    if args.upload_existing_path:
+        logger.info(f"Uploading existing video file: {args.upload_existing_path}")
+        app = CompilationApp(args.config)
+        if not app.youtube_uploader.authenticate():
+            logger.error("YouTube authentication failed. Please check your credentials.")
+            return 1
+        video_id = app.youtube_uploader.upload_video(
+            args.upload_existing_path,
+            title=args.title,
+            description=args.description,
+            thumbnail_path=None
+        )
+        if video_id:
+            logger.success(f"Uploaded existing video: {args.upload_existing_path}")
+            logger.info(f"YouTube URL: https://www.youtube.com/watch?v={video_id}")
+        else:
+            logger.error("Upload failed.")
+        return 0
+    
+    # If no URLs are provided and --auto-fetch is set (or nothing is provided), fetch URLs
+    urls = args.url_list
+    urls_file = args.urls
+    should_auto_fetch = args.auto_fetch or (not urls and not urls_file)
+
+    if should_auto_fetch:
+        logger.info(f"Auto-fetching {args.fetch_count} TikTok URLs using hashtag #{args.fetch_hashtag}")
+        # Dynamically import the scraper to avoid circular imports
+        tiktok_scraper = importlib.import_module("src.url_collector.tiktok_scraper")
+        output_file = "auto_fetched_urls.txt"
+        fetched_urls = await tiktok_scraper.collect_tiktok_video_urls(
+            args.fetch_count,
+            output_file,
+            args.fetch_hashtag,
+            args.processed_db
+        )
+        urls_file = output_file
+        logger.info(f"Fetched {len(fetched_urls)} URLs to {output_file}")
+
     # Initialize the application
     app = CompilationApp(args.config)
-    
+
     # Run the pipeline
     compilation_path, shorts_paths = await app.run(
-        urls_file=args.urls,
-        urls=args.url_list,
+        urls_file=urls_file,
+        urls=urls,
         title=args.title,
         description=args.description,
-        upload_to_youtube=args.upload,
+        upload_to_youtube=args.upload_compilation or args.upload_shorts or args.upload_both,
+        upload_compilation=args.upload_compilation or args.upload_both,
+        upload_shorts=args.upload_shorts or args.upload_both,
         generate_shorts=args.generate_shorts,
         compilation_short=args.compilation_short,
         max_videos=args.max_videos,
