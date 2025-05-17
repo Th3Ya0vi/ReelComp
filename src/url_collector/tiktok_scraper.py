@@ -36,10 +36,16 @@ def load_processed_urls(processed_db_file="data/processed_urls.json"):
         try:
             with open(db_path, 'r') as f:
                 data = json.load(f)
-                return set(data.get("processed_urls", []))
+                processed = set(data.get("processed_urls", []))
+                if not processed:
+                    print(f"[WARNING] Processed URLs database {processed_db_file} is empty.")
+                else:
+                    print(f"[INFO] Loaded {len(processed)} processed URLs from {processed_db_file}.")
+                return processed
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading processed URLs database: {e}")
             return set()
+    print(f"[WARNING] Processed URLs database {processed_db_file} does not exist.")
     return set()
 
 
@@ -101,21 +107,29 @@ async def collect_tiktok_video_urls(count, output_file, hashtag, processed_db_fi
         scroll_attempts = 0
         max_scroll_attempts = 50
         
+        print(f"[INFO] Existing URLs in output file: {len(existing_urls)}")
+        print(f"[INFO] Processed URLs in database: {len(processed_urls)}")
+        
         while len(urls) < count and scroll_attempts < max_scroll_attempts:
             elements = await page.query_selector_all('a[href*="/video/"]')
-            print(f"Found {len(elements)} video link elements on page.")
+            print(f"[INFO] Found {len(elements)} video link elements on page.")
             
             for el in elements:
                 href = await el.get_attribute('href')
-                # Only add URLs that are valid TikTok videos, not in the output file already,
-                # not in our current collection, and not previously processed
                 if (href and is_valid_tiktok_url(href) and 
                     href not in existing_urls and 
                     href not in urls and
                     href not in processed_urls):
                     urls.add(href)
+                    print(f"[INFO] Added new URL: {href}")
                     if len(urls) >= count:
                         break
+                elif href in processed_urls:
+                    print(f"[DEBUG] Skipped already processed URL: {href}")
+                elif href in existing_urls:
+                    print(f"[DEBUG] Skipped already in output file: {href}")
+                elif href in urls:
+                    print(f"[DEBUG] Skipped duplicate in current run: {href}")
                         
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await page.wait_for_timeout(2000)
@@ -134,7 +148,7 @@ async def collect_tiktok_video_urls(count, output_file, hashtag, processed_db_fi
         for url in urls:
             f.write(url + "\n")
     
-    print(f"Collected {len(urls)} new unique TikTok video URLs and wrote to {output_file}")
+    print(f"[INFO] Total new URLs collected: {len(urls)}")
     
     # Return the URLs for potential further processing
     return urls

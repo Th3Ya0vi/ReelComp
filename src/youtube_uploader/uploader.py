@@ -42,7 +42,7 @@ class YouTubeUploader:
         # Create tokens directory if it doesn't exist
         os.makedirs(os.path.dirname(self.youtube_config.token_path), exist_ok=True)
     
-    def authenticate(self) -> bool:
+    async def authenticate(self) -> bool:
         """
         Authenticate with the YouTube API.
         
@@ -95,6 +95,7 @@ class YouTubeUploader:
                             self.youtube_config.client_secrets_path, 
                             self.SCOPES
                         )
+                        # This is not an awaitable method - running it normally
                         credentials = flow.run_local_server(port=0)
                         
                         # Save the credentials for future use
@@ -115,7 +116,7 @@ class YouTubeUploader:
             logger.error(f"Error in YouTube authentication: {str(e)}")
             return False
     
-    def upload_video(
+    async def upload_video(
         self,
         video_path: str,
         title: str,
@@ -182,7 +183,7 @@ class YouTubeUploader:
             )
             
             # Upload the video with progress tracking
-            video_id = self._upload_with_progress(insert_request)
+            video_id = await self._upload_with_progress(insert_request)
             
             if not video_id:
                 logger.error("Upload failed or was interrupted")
@@ -208,7 +209,7 @@ class YouTubeUploader:
             logger.error(f"Error during video upload: {str(e)}")
             return None
     
-    def _upload_with_progress(self, insert_request) -> Optional[str]:
+    async def _upload_with_progress(self, insert_request) -> Optional[str]:
         """
         Execute the upload request with progress tracking.
         
@@ -383,39 +384,44 @@ class YouTubeUploader:
 
 # Example usage
 if __name__ == "__main__":
+    import asyncio
     from src.utils.config_loader import ConfigLoader
     from src.utils.logger_config import setup_logger
     
     # Setup logger
     setup_logger()
     
-    # Load config
-    config = ConfigLoader().get_config()
-    
-    # Create uploader
-    uploader = YouTubeUploader(config)
-    
-    # Authenticate
-    if uploader.authenticate():
-        # Example video upload
-        video_id = uploader.upload_video(
-            video_path="path/to/your/video.mp4",
-            title="Test Upload from TikTok Compilation Tool",
-            description="This is a test upload from the TikTok Compilation Automation tool.",
-            tags=["test", "tiktok", "compilation"],
-            privacy_status="private"  # Use private for testing
-        )
+    async def main():
+        # Load config
+        config = ConfigLoader().get_config()
         
-        if video_id:
-            print(f"Upload successful! Video ID: {video_id}")
-            
-            # Create and add to playlist (optional)
-            playlist_id = uploader.create_playlist(
-                title="TikTok Compilations",
-                description="Automated TikTok compilations"
+        # Create uploader
+        uploader = YouTubeUploader(config)
+        
+        # Authenticate
+        if await uploader.authenticate():
+            # Example video upload
+            video_id = await uploader.upload_video(
+                video_path="path/to/your/video.mp4",
+                title="Test Upload from TikTok Compilation Tool",
+                description="This is a test upload from the TikTok Compilation Automation tool.",
+                tags=["test", "tiktok", "compilation"],
+                privacy_status="private"  # Use private for testing
             )
             
-            if playlist_id:
-                uploader.add_to_playlist(playlist_id, video_id)
-    else:
-        print("Authentication failed.") 
+            if video_id:
+                print(f"Upload successful! Video ID: {video_id}")
+                
+                # Create and add to playlist (optional)
+                playlist_id = uploader.create_playlist(
+                    title="TikTok Compilations",
+                    description="Automated TikTok compilations"
+                )
+                
+                if playlist_id:
+                    uploader.add_to_playlist(playlist_id, video_id)
+        else:
+            print("Authentication failed.")
+    
+    # Run the async main function
+    asyncio.run(main()) 
