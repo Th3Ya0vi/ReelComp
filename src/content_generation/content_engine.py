@@ -285,10 +285,11 @@ class ContentVideoEngine:
                                 text = visual.get("text", script_data["title"])
                                 text_clip = (
                                     TextClip(
-                                        text, 
+                                        text.upper(), 
                                         fontsize=60, 
                                         color='white',
                                         method='caption',
+                                        bg_color='transparent',
                                         size=(self.config.app.video_width, self.config.app.video_height - 200)
                                     )
                                     .set_position(('center', 'center'))
@@ -337,11 +338,12 @@ class ContentVideoEngine:
                             # Intro - title card
                             text_clip = (
                                 TextClip(
-                                    script_data["title"], 
+                                    script_data["title"].upper(), 
                                     fontsize=60, 
                                     color='white',
                                     method='caption',
-                                    size=(self.config.app.video_width, self.config.app.video_height - 200)
+                                    size=(self.config.app.video_width, self.config.app.video_height - 200),
+                                    bg_color='transparent'  # Ensure text has transparent background
                                 )
                                 .set_position(('center', 'center'))
                                 .set_start(segment_start)
@@ -349,45 +351,19 @@ class ContentVideoEngine:
                             )
                             clips.append(text_clip)
                             
-                            # Add background for intro
-                            if assets["videos"]:
-                                video_path = random.choice(assets["videos"])
-                                try:
-                                    video_clip = (
-                                        VideoFileClip(video_path)
-                                        .resize(height=self.config.app.video_height)
-                                        .set_position(('center', 'center'))
-                                        .set_start(segment_start)
-                                        .set_duration(min(5, segment_duration))
-                                        .set_opacity(0.7)  # Make it semi-transparent behind text
-                                    )
-                                    clips.append(video_clip)
-                                except Exception as e:
-                                    logger.error(f"Error creating video clip: {str(e)}")
-                            elif assets["images"]:
-                                image_path = random.choice(assets["images"])
-                                try:
-                                    image_clip = (
-                                        ImageClip(image_path)
-                                        .resize(height=self.config.app.video_height)
-                                        .set_position(('center', 'center'))
-                                        .set_start(segment_start)
-                                        .set_duration(min(5, segment_duration))
-                                        .set_opacity(0.7)  # Make it semi-transparent behind text
-                                    )
-                                    clips.append(image_clip)
-                                except Exception as e:
-                                    logger.error(f"Error creating image clip: {str(e)}")
+                            # We no longer need segment-specific backgrounds as we'll use a full video background
+                            pass
                         
                         elif i == segments - 1:
                             # Outro
                             text_clip = (
                                 TextClip(
-                                    "Thanks for watching!", 
+                                    "THANKS FOR WATCHING!", 
                                     fontsize=60, 
                                     color='white',
                                     method='caption',
-                                    size=(self.config.app.video_width, self.config.app.video_height - 200)
+                                    size=(self.config.app.video_width, self.config.app.video_height - 200),
+                                    bg_color='transparent'  # Ensure text has transparent background
                                 )
                                 .set_position(('center', 'center'))
                                 .set_start(segment_start)
@@ -395,73 +371,63 @@ class ContentVideoEngine:
                             )
                             clips.append(text_clip)
                             
-                            # Add background for outro
-                            if assets["videos"]:
-                                video_path = random.choice(assets["videos"])
-                                try:
-                                    video_clip = (
-                                        VideoFileClip(video_path)
-                                        .resize(height=self.config.app.video_height)
-                                        .set_position(('center', 'center'))
-                                        .set_start(segment_start)
-                                        .set_duration(min(5, segment_duration))
-                                        .set_opacity(0.7)  # Make it semi-transparent behind text
-                                    )
-                                    clips.append(video_clip)
-                                except Exception as e:
-                                    logger.error(f"Error creating video clip: {str(e)}")
-                            elif assets["images"]:
-                                image_path = random.choice(assets["images"])
-                                try:
-                                    image_clip = (
-                                        ImageClip(image_path)
-                                        .resize(height=self.config.app.video_height)
-                                        .set_position(('center', 'center'))
-                                        .set_start(segment_start)
-                                        .set_duration(min(5, segment_duration))
-                                        .set_opacity(0.7)  # Make it semi-transparent behind text
-                                    )
-                                    clips.append(image_clip)
-                                except Exception as e:
-                                    logger.error(f"Error creating image clip: {str(e)}")
+                            # We no longer need segment-specific backgrounds as we'll use a full video background
+                            pass
                         
                         else:
-                            # Main content - use videos if available
-                            if assets["videos"]:
-                                video_path = random.choice(assets["videos"])
-                                try:
-                                    video_clip = (
-                                        VideoFileClip(video_path)
-                                        .resize(height=self.config.app.video_height)
-                                        .set_position(('center', 'center'))
-                                        .set_start(segment_start)
-                                        .set_duration(segment_duration)
-                                    )
-                                    clips.append(video_clip)
-                                except Exception as e:
-                                    logger.error(f"Error creating video clip: {str(e)}")
-                            # Fallback to images
-                            elif assets["images"]:
-                                image_path = random.choice(assets["images"])
-                                try:
-                                    image_clip = (
-                                        ImageClip(image_path)
-                                        .resize(height=self.config.app.video_height)
-                                        .set_position(('center', 'center'))
-                                        .set_start(segment_start)
-                                        .set_duration(segment_duration)
-                                    )
-                                    clips.append(image_clip)
-                                except Exception as e:
-                                    logger.error(f"Error creating image clip: {str(e)}")
+                            # We now use a single full-duration background for the entire video
+                            # Add any segment-specific text or overlays here if needed
+                            pass
             
-            # Create a background clip if needed
-            background_clip = ColorClip(
-                size=(self.config.app.video_width, self.config.app.video_height),
-                color=(0, 0, 0),
-                duration=video_duration
-            )
-            clips.insert(0, background_clip)
+            # Create a full video background if we have videos
+            if assets["videos"]:
+                # Use a video for the entire background
+                video_path = random.choice(assets["videos"])
+                try:
+                    background_video = (
+                        VideoFileClip(video_path)
+                        .resize(height=self.config.app.video_height)
+                        .set_position(('center', 'center'))
+                        .set_duration(video_duration)
+                    )
+                    clips.insert(0, background_video)
+                except Exception as e:
+                    logger.error(f"Error creating background video clip: {str(e)}")
+                    # Fallback to black background
+                    background_clip = ColorClip(
+                        size=(self.config.app.video_width, self.config.app.video_height),
+                        color=(0, 0, 0),
+                        duration=video_duration
+                    )
+                    clips.insert(0, background_clip)
+            # Use image if no video is available
+            elif assets["images"]:
+                image_path = random.choice(assets["images"])
+                try:
+                    background_image = (
+                        ImageClip(image_path)
+                        .resize(height=self.config.app.video_height)
+                        .set_position(('center', 'center'))
+                        .set_duration(video_duration)
+                    )
+                    clips.insert(0, background_image)
+                except Exception as e:
+                    logger.error(f"Error creating background image clip: {str(e)}")
+                    # Fallback to black background
+                    background_clip = ColorClip(
+                        size=(self.config.app.video_width, self.config.app.video_height),
+                        color=(0, 0, 0),
+                        duration=video_duration
+                    )
+                    clips.insert(0, background_clip)
+            # Fallback to black background if no assets
+            else:
+                background_clip = ColorClip(
+                    size=(self.config.app.video_width, self.config.app.video_height),
+                    color=(0, 0, 0),
+                    duration=video_duration
+                )
+                clips.insert(0, background_clip)
             
             # Add captions if requested
             if include_captions and "script" in script_data:

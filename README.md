@@ -141,8 +141,27 @@ USE_POPUP_CAPTIONS=true  # Enable TikTok-style pop-up captions
 # Visual assets
 PEXELS_API_KEY=your_pexels_api_key  # For video/image sourcing
 UNSPLASH_ACCESS_KEY=your_unsplash_access_key  # For image sourcing
-PIXABAY_API_KEY=your_pixabay_api_key  # For video/image sourcing
+PIXABAY_API_KEY=your_pixabay_api_key  # For video/image sourcing (required for background assets)
 ```
+
+### Getting API Keys for Visual Assets
+
+For the best results with background videos and images, you should add at least one of these API keys:
+
+#### Pixabay API Key (Recommended)
+1. Sign up for a free account at [Pixabay](https://pixabay.com/)
+2. Go to https://pixabay.com/api/docs/ and get your API key
+3. Add it to your config.json file or .env file as `PIXABAY_API_KEY`
+
+#### Unsplash Access Key
+1. Create a developer account at [Unsplash Developers](https://unsplash.com/developers)
+2. Create a new application to get your access key
+3. Add it to your config.json or .env file as `UNSPLASH_ACCESS_KEY`
+
+#### Pexels API Key
+1. Sign up for a free account at [Pexels](https://www.pexels.com/)
+2. Apply for an API key at [Pexels API](https://www.pexels.com/api/)
+3. Add it to your config.json or .env file as `PEXELS_API_KEY`
 
 ### DALL-E Fallback for Background Images and Videos
 

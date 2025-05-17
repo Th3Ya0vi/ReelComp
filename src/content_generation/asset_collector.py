@@ -95,149 +95,98 @@ class AssetCollector:
         output_dir: Optional[str] = None
     ) -> Dict[str, List[str]]:
         """
-        Collect assets (images and videos) based on search terms.
+        Collect assets for video creation.
         
         Args:
             search_terms: List of search terms
-            num_images: Number of images to collect
-            num_videos: Number of videos to collect
-            output_dir: Directory to save assets (optional)
+            num_images: Number of images to collect per search term
+            num_videos: Number of videos to collect per search term
+            output_dir: Directory to save assets
             
         Returns:
-            Dictionary with paths to collected assets
+            Dictionary with collected assets
         """
+        # Make sure we have a valid output directory
         output_dir = self._ensure_output_directory(output_dir)
         
-        logger.info(f"Collecting assets for search terms: {search_terms}")
-        
-        # Initialize result
-        result = {
+        # Initialize results
+        results = {
             "images": [],
             "videos": []
         }
         
-        # Special handling for financial rules like the 50/30/20 rule
-        full_topic = " ".join(search_terms).lower()
-        financial_pattern_detected = False
+        # Create a set of fallback/generic search terms for backgrounds if the specific ones fail
+        fallback_terms = ["background", "abstract", "texture", "gradient", "nature", "landscape", "colors"]
         
-        if any(term.isdigit() for term in search_terms) and any(kw in full_topic for kw in ["method", "rule", "budget", "saving", "money"]):
-            # This looks like a financial rule that includes numbers
-            logger.info("Detected a financial rule or method with numbers")
-            financial_pattern_detected = True
-            
-            # Add specific financial search terms for better results
-            financial_terms = [
-                "personal finance concept",
-                "money management illustration",
-                "budget planning graphic",
-                "financial advice chart",
-                "saving money illustration"
-            ]
-            
-            enhanced_search_terms = financial_terms
-            # Still include the full topic if it's not just numbers
-            if not full_topic.replace(" ", "").isdigit() and len(full_topic.strip()) > 5:
-                enhanced_search_terms.append(full_topic)
-        else:
-            # Enhance single-word terms that might cause API issues
-            enhanced_search_terms = []
-            for term in search_terms:
-                # Skip very short terms or numbers on their own
-                if len(term) <= 2 or term.isdigit():
-                    continue
+        # First try with specific search terms
+        logger.info(f"Collecting assets for search terms: {search_terms}")
+        
+        # Collect images
+        for search_term in search_terms:
+            if len(results["images"]) >= num_images:
+                break
                 
-                # For single words, add descriptive context
-                if len(term.split()) == 1 and not term.isdigit():
-                    enhanced_term = f"{term} concept"
-                    enhanced_search_terms.append(enhanced_term)
-                else:
-                    enhanced_search_terms.append(term)
+            # Collect images for this search term
+            images = self.collect_images(search_term, max_count=num_images - len(results["images"]), output_dir=output_dir)
+            results["images"].extend(images)
             
-            # If we filtered out all terms, use the original list
-            if not enhanced_search_terms and search_terms:
-                # Add one combined term that includes multiple single terms
-                combined_term = " ".join([term for term in search_terms if term and len(term) > 1])
-                if combined_term:
-                    enhanced_search_terms = [combined_term]
-                else:
-                    enhanced_search_terms = search_terms
-            
-            # Always include the full topic as one search term if it's not just digits
-            if not full_topic.isdigit() and full_topic not in enhanced_search_terms:
-                enhanced_search_terms.append(full_topic)
-        
-        logger.debug(f"Enhanced search terms: {enhanced_search_terms}")
-        
-        # Choose appropriate visual terms based on detected content type
-        if financial_pattern_detected:
-            # Use more finance-related visual backgrounds for videos
-            visual_terms = [
-                "financial graph animation", 
-                "money background", 
-                "business chart background",
-                "financial success background", 
-                "money management video"
-            ]
-        else:
-            # Use standard abstract/nature terms for videos
-            visual_terms = [
-                "abstract background", "nature scenery", "colorful pattern", 
-                "flowing water", "ocean waves", "forest canopy", "clouds timelapse", 
-                "geometric shapes", "particle effects", "light bokeh"
-            ]
-        
-        random.shuffle(visual_terms)
-        visual_terms = visual_terms[:3]  # Use a subset of terms
-        
-        # Process each search term for images (can keep topic-related)
-        for term in enhanced_search_terms:
-            logger.debug(f"Searching for images with term: {term}")
-            
-            # Collect images
-            images = self.collect_images(term, max_count=num_images // len(enhanced_search_terms) + 1, output_dir=output_dir)
-            result["images"].extend(images)
-        
-        # Process visual terms for videos (abstract/nature regardless of topic)
-        for term in visual_terms:
-            logger.debug(f"Searching for videos with visual term: {term}")
-            
-            # Collect videos
-            videos = self.collect_videos(term, max_count=num_videos // len(visual_terms) + 1, output_dir=output_dir)
-            result["videos"].extend(videos)
-        
-        # Limit results to requested numbers
-        result["images"] = result["images"][:num_images]
-        result["videos"] = result["videos"][:num_videos]
-        
-        # If we didn't get enough videos, try with more visual terms as fallback
-        if len(result["videos"]) < num_videos:
-            logger.debug("Not enough videos found with visual terms, trying more abstract terms")
-            
-            if financial_pattern_detected:
-                more_visual_terms = [
-                    "financial success", "money growth animation", 
-                    "savings growth", "budget planning", "finance background"
-                ]
+            # If we still need more images, continue to next search term
+            if len(results["images"]) < num_images:
+                logger.debug(f"Collected {len(images)} images for '{search_term}', need {num_images - len(results['images'])} more")
             else:
-                more_visual_terms = [
-                    "abstract motion", "slow motion", "gradient background", 
-                    "ambient visuals", "relaxing scenery", "underwater scene"
-                ]
+                logger.debug(f"Collected enough images ({len(results['images'])})")
+                break
+        
+        # If we still need images, try fallback terms
+        if len(results["images"]) < num_images:
+            logger.warning(f"Only found {len(results['images'])}/{num_images} images with specific search terms. Using generic background terms.")
             
-            random.shuffle(more_visual_terms)
-            
-            for term in more_visual_terms:
-                videos = self.collect_videos(term, max_count=num_videos - len(result["videos"]), output_dir=output_dir)
-                result["videos"].extend(videos)
-                if len(result["videos"]) >= num_videos:
+            for term in fallback_terms:
+                if len(results["images"]) >= num_images:
                     break
+                    
+                # Collect images for this fallback term
+                images = self.collect_images(term, max_count=num_images - len(results["images"]), output_dir=output_dir)
+                results["images"].extend(images)
+                
+                if images:
+                    logger.info(f"Added {len(images)} generic background images using term '{term}'")
+        
+        # Collect videos
+        for search_term in search_terms:
+            if len(results["videos"]) >= num_videos:
+                break
+                
+            # Collect videos for this search term
+            videos = self.collect_videos(search_term, max_count=num_videos - len(results["videos"]), output_dir=output_dir)
+            results["videos"].extend(videos)
             
-            # Limit videos again
-            result["videos"] = result["videos"][:num_videos]
+            # If we still need more videos, continue to next search term
+            if len(results["videos"]) < num_videos:
+                logger.debug(f"Collected {len(videos)} videos for '{search_term}', need {num_videos - len(results['videos'])} more")
+            else:
+                logger.debug(f"Collected enough videos ({len(results['videos'])})")
+                break
+                
+        # If we still need videos, try fallback terms
+        if len(results["videos"]) < num_videos:
+            logger.warning(f"Only found {len(results['videos'])}/{num_videos} videos with specific search terms. Using generic background terms.")
+            
+            for term in fallback_terms:
+                if len(results["videos"]) >= num_videos:
+                    break
+                    
+                # Collect videos for this fallback term
+                videos = self.collect_videos(term, max_count=num_videos - len(results["videos"]), output_dir=output_dir)
+                results["videos"].extend(videos)
+                
+                if videos:
+                    logger.info(f"Added {len(videos)} generic background videos using term '{term}'")
         
-        logger.success(f"Collected {len(result['images'])} images and {len(result['videos'])} videos")
+        # Log results
+        logger.info(f"Asset collection complete. Found {len(results['images'])} images and {len(results['videos'])} videos.")
         
-        return result
+        return results
     
     def collect_images(self, search_term: str, max_count: int = 5, output_dir: Optional[str] = None) -> List[str]:
         """
@@ -253,20 +202,7 @@ class AssetCollector:
         """
         output_dir = self._ensure_output_directory(output_dir)
         
-        # Try Pexels first if available
-        if PEXELS_AVAILABLE and self.pexels_client:
-            try:
-                logger.debug(f"Searching Pexels for images with term: {search_term}")
-                image_paths = self._collect_pexels_images(search_term, max_count, output_dir)
-                
-                if image_paths:
-                    return image_paths
-                    
-                logger.warning(f"No images found on Pexels for: {search_term}")
-            except Exception as e:
-                logger.error(f"Error collecting Pexels images: {str(e)}")
-        
-        # Try Pixabay if API key is available
+        # Try Pixabay first as the primary source
         if self.config.ai.pixabay_api_key:
             try:
                 logger.debug(f"Searching Pixabay for images with term: {search_term}")
@@ -279,7 +215,20 @@ class AssetCollector:
             except Exception as e:
                 logger.error(f"Error collecting Pixabay images: {str(e)}")
         
-        # Fallback to unsplash
+        # Try Pexels as second option if available
+        if PEXELS_AVAILABLE and self.pexels_client:
+            try:
+                logger.debug(f"Searching Pexels for images with term: {search_term}")
+                image_paths = self._collect_pexels_images(search_term, max_count, output_dir)
+                
+                if image_paths:
+                    return image_paths
+                    
+                logger.warning(f"No images found on Pexels for: {search_term}")
+            except Exception as e:
+                logger.error(f"Error collecting Pexels images: {str(e)}")
+        
+        # Fallback to unsplash as last option
         try:
             logger.debug(f"Searching Unsplash for images with term: {search_term}")
             image_paths = self._collect_unsplash_images(search_term, max_count, output_dir)
@@ -291,25 +240,8 @@ class AssetCollector:
         except Exception as e:
             logger.error(f"Error collecting Unsplash images: {str(e)}")
         
-        # Try GPT Image as a last resort
-        if OPENAI_AVAILABLE and self.openai_client and self.config.ai.openai_api_key:
-            try:
-                logger.info(f"Attempting to generate images with GPT Image for: {search_term}")
-                
-                image_paths = []
-                for i in range(min(2, max_count)):  # Generate up to 2 images to avoid excessive API usage
-                    gpt_image = self._generate_dalle_image(search_term, output_dir)
-                    if gpt_image:
-                        image_paths.append(gpt_image)
-                        # Small delay to avoid rate limits
-                        time.sleep(1)
-                
-                if image_paths:
-                    return image_paths
-                    
-                logger.warning(f"Failed to generate GPT Image images for: {search_term}")
-            except Exception as e:
-                logger.error(f"Error generating GPT Image images: {str(e)}")
+        # No longer using GPT Image generation
+        logger.info(f"Using only Pixabay and other standard sources for images")
         
         # If all else fails, return empty list
         logger.warning(f"Failed to collect any images for: {search_term}")
@@ -329,7 +261,19 @@ class AssetCollector:
         """
         output_dir = self._ensure_output_directory(output_dir)
         
-        # Try Pexels first if available
+        # Try Pixabay first as the primary source for videos
+        try:
+            logger.debug(f"Searching Pixabay for videos with term: {search_term}")
+            video_paths = self._collect_pixabay_videos(search_term, max_count, output_dir)
+            
+            if video_paths:
+                return video_paths
+                
+            logger.warning(f"No videos found on Pixabay for: {search_term}")
+        except Exception as e:
+            logger.error(f"Error collecting Pixabay videos: {str(e)}")
+        
+        # Fallback to Pexels if available
         if PEXELS_AVAILABLE and self.pexels_client:
             try:
                 logger.debug(f"Searching Pexels for videos with term: {search_term}")
@@ -341,18 +285,6 @@ class AssetCollector:
                 logger.warning(f"No videos found on Pexels for: {search_term}")
             except Exception as e:
                 logger.error(f"Error collecting Pexels videos: {str(e)}")
-        
-        # Fallback to Pixabay
-        try:
-            logger.debug(f"Searching Pixabay for videos with term: {search_term}")
-            video_paths = self._collect_pixabay_videos(search_term, max_count, output_dir)
-            
-            if video_paths:
-                return video_paths
-                
-            logger.warning(f"No videos found on Pixabay for: {search_term}")
-        except Exception as e:
-            logger.error(f"Error collecting Pixabay videos: {str(e)}")
         
         # If all else fails, return empty list
         logger.warning(f"Failed to collect any videos for: {search_term}")
@@ -600,7 +532,7 @@ class AssetCollector:
             params = {
                 "key": self.config.ai.pixabay_api_key,
                 "q": clean_term,
-                "per_page": min(max_count, 20),  # Limit to reasonable number
+                "per_page": max(3, min(max_count, 200)),  # Ensure value is between 3-200
                 "safesearch": "true",  # Ensure safe content
                 "video_type": "all"    # Include all video types
             }
@@ -752,7 +684,7 @@ class AssetCollector:
             params = {
                 "key": self.config.ai.pixabay_api_key,
                 "q": clean_term,
-                "per_page": min(max_count, 20),  # Limit to reasonable number
+                "per_page": max(3, min(max_count, 200)),  # Ensure value is between 3-200
                 "safesearch": "true",  # Ensure safe content
                 "image_type": "all"    # Include all image types
             }
@@ -889,60 +821,8 @@ class AssetCollector:
         """
         output_dir = self._ensure_output_directory(output_dir)
         
-        # Try to create a video with OpenAI generated image as background (if not skipped)
-        if not skip_image_generation and OPENAI_AVAILABLE and self.openai_client and self.config.ai.openai_api_key:
-            try:
-                # Try just once to generate an image
-                logger.debug(f"Attempting to generate image for fallback asset: {search_term}")
-                gpt_image = self._generate_dalle_image(search_term, output_dir)
-                
-                if gpt_image:
-                    from PIL import Image
-                    from moviepy.editor import ImageClip
-                    
-                    # Open and resize the image to maintain aspect ratio
-                    img = Image.open(gpt_image)
-                    img_width, img_height = img.size
-                    
-                    # Create image clip
-                    image_clip = ImageClip(gpt_image)
-                    
-                    # Resize to fill the screen while maintaining aspect ratio
-                    if img_width / img_height > width / height:  # Image is wider than video
-                        image_clip = image_clip.resize(height=height)
-                    else:  # Image is taller than video
-                        image_clip = image_clip.resize(width=width)
-                    
-                    # Center the image
-                    image_clip = image_clip.set_position(('center', 'center')).set_duration(duration)
-                    
-                    # No text clip with the search term anymore
-                    
-                    # Use just the image clip without text overlay
-                    final_clip = CompositeVideoClip([image_clip])
-                    
-                    # Generate output path
-                    filename = f"gpt_image_video_{search_term.replace(' ', '_')}_{uuid.uuid4().hex[:8]}.mp4"
-                    output_path = os.path.join(output_dir, filename)
-                    
-                    # Write to file
-                    final_clip.write_videofile(
-                        output_path,
-                        fps=24,
-                        codec='libx264',
-                        audio=False,
-                        logger=None
-                    )
-                    
-                    # Close clips
-                    final_clip.close()
-                    
-                    logger.info(f"Generated GPT Image based video asset: {output_path}")
-                    return output_path
-                
-            except Exception as e:
-                logger.error(f"Error creating GPT Image based video: {str(e)}")
-                logger.info("Falling back to simple color background video")
+        # No longer using OpenAI image generation, going directly to color background
+        logger.info(f"Using color background for fallback asset: {search_term}")
         
         # If GPT Image failed or is not available, use original method
         # Generate a random color (but not too dark)
@@ -1012,62 +892,38 @@ class AssetCollector:
             "videos": []
         }
         
-        # Try to generate at least one asset with image generation first if not skipped
-        if not skip_image_generation and OPENAI_AVAILABLE and self.openai_client and self.config.ai.openai_api_key:
-            try:
-                # Try generating one asset with image
-                term = search_terms[0] if search_terms else "background"
-                logger.info(f"Attempting to generate first fallback asset with image for: {term}")
-                
-                video_path = self.generate_fallback_asset(
-                    search_term=term,
-                    duration=duration,
-                    width=self.config.app.video_width,
-                    height=self.config.app.video_height,
-                    output_dir=output_dir,
-                    skip_image_generation=False
-                )
-                
-                if video_path:
-                    result["videos"].append(video_path)
-                    # If image generation was successful, continue with it for the rest
-                    image_generation_failed = False
-                else:
-                    # If it failed, set flag to skip for the rest
-                    image_generation_failed = True
-                    logger.warning("Initial image generation failed, skipping for remaining assets")
-            except Exception as e:
-                logger.error(f"Error generating first fallback asset: {str(e)}")
-                image_generation_failed = True
-        else:
-            # Skip image generation entirely
-            image_generation_failed = True
+        # No longer using OpenAI image generation, always skip
+        logger.info("Using only color backgrounds for fallback assets")
+        image_generation_failed = True  # Always skip image generation
         
-        # Generate remaining assets, skipping image generation if it failed before
-        for term in search_terms[1:num_assets] if (not skip_image_generation and result["videos"]) else search_terms[:num_assets]:
-            try:
-                # Generate a fallback video asset
-                video_path = self.generate_fallback_asset(
-                    search_term=term,
-                    duration=duration,
-                    width=self.config.app.video_width,
-                    height=self.config.app.video_height,
-                    output_dir=output_dir,
-                    skip_image_generation=image_generation_failed
-                )
-                
-                if video_path:
-                    result["videos"].append(video_path)
-                
-            except Exception as e:
-                logger.error(f"Error generating fallback asset for {term}: {str(e)}")
+        # Generate just one additional asset if needed (to limit total assets)
+        if len(result["videos"]) == 0:
+            # No assets yet, generate one from the first search term
+            if search_terms:
+                term = search_terms[0]
+                try:
+                    # Generate a fallback video asset
+                    video_path = self.generate_fallback_asset(
+                        search_term=term,
+                        duration=duration,
+                        width=self.config.app.video_width,
+                        height=self.config.app.video_height,
+                        output_dir=output_dir,
+                        skip_image_generation=image_generation_failed
+                    )
+                    
+                    if video_path:
+                        result["videos"].append(video_path)
+                    
+                except Exception as e:
+                    logger.error(f"Error generating fallback asset for {term}: {str(e)}")
         
         logger.success(f"Generated {len(result['videos'])} fallback assets")
         return result
 
-    def _generate_dalle_image(self, search_term: str, output_dir: str) -> Optional[str]:
+    def _generate_ai_image(self, search_term: str, output_dir: str) -> Optional[str]:
         """
-        Generate an image using OpenAI's image generation models with multiple fallbacks.
+        Generate an image using OpenAI's image-1 model with fallbacks.
         
         Args:
             search_term: Description for the image to generate
@@ -1104,12 +960,12 @@ class AssetCollector:
         
         # Randomly select a prompt
         enhanced_prompt = random.choice(enhanced_prompts)
-        logger.debug(f"Using DALL-E prompt: {enhanced_prompt}")
+        logger.debug(f"Using AI image prompt: {enhanced_prompt}")
         
-        # Prepare a list of models to try in fallback order
+        # Use the image-1 model as specified
         models_to_try = [
-            {"model": "dall-e-2", "size": "1024x1024"},  # Most reliable older model
-            {"model": "dall-e-3", "size": "1024x1024", "quality": "standard"},  # Newer model
+            {"model": "gpt-image-1", "size": "1024x1024", "quality": "high"},  # Primary model with valid quality value
+            {"model": "dall-e-2", "size": "1024x1024"},  # Fallback to older model if needed
         ]
         
         for model_config in models_to_try:
@@ -1131,22 +987,65 @@ class AssetCollector:
                 # Generate the image
                 response = self.openai_client.images.generate(**generate_params)
                 
-                # Log response summary
-                logger.debug(f"Response from {model_config['model']}: {response}")
+                # Enhanced response logging
+                logger.info(f"Got response from {model_config['model']}")
+                logger.debug(f"Response type: {type(response)}")
+                logger.debug(f"Response dir: {dir(response)}")
+                logger.debug(f"Response full: {response}")
+                
+                # Try to access response.model and other attributes for better debugging
+                try:
+                    if hasattr(response, 'model'):
+                        logger.debug(f"Response model: {response.model}")
+                    if hasattr(response, 'created'):
+                        logger.debug(f"Response created timestamp: {response.created}")
+                    if hasattr(response, 'data') and response.data:
+                        logger.debug(f"Response data length: {len(response.data)}")
+                except Exception as attr_error:
+                    logger.debug(f"Error accessing response attributes: {str(attr_error)}")
                 
                 # Check for valid data
                 if not hasattr(response, 'data') or not response.data or len(response.data) == 0:
                     logger.warning(f"{model_config['model']} response contains no image data")
                     continue
                 
-                # Get image URL
+                # Get image URL - with improved logging for gpt-image-1
                 data_item = response.data[0]
+                logger.debug(f"Data item type: {type(data_item)}")
+                logger.debug(f"Data item representation: {repr(data_item)}")
                 
-                # Check for different response structures
-                if hasattr(data_item, 'url'):
+                # Log all attributes and values if possible
+                try:
+                    if hasattr(data_item, '__dict__'):
+                        for attr_name in dir(data_item):
+                            if not attr_name.startswith('_'):
+                                try:
+                                    attr_value = getattr(data_item, attr_name)
+                                    if not callable(attr_value):
+                                        logger.debug(f"Data item attribute '{attr_name}' = {attr_value}")
+                                except Exception:
+                                    pass
+                except Exception as attr_error:
+                    logger.debug(f"Error inspecting data item attributes: {str(attr_error)}")
+                
+                # Debug the full data item to understand its structure
+                logger.debug(f"Response data item structure: {dir(data_item)}")
+                
+                # More comprehensive check for various response structures
+                image_url = None
+                
+                # Check for direct URL attribute (standard for DALL-E models)
+                if hasattr(data_item, 'url') and data_item.url:
                     image_url = data_item.url
-                elif hasattr(data_item, 'b64_json'):
-                    # Handle base64 encoded images
+                    logger.debug(f"Found direct URL: {image_url}")
+                
+                # Check for revised URL attribute (might be used by gpt-image-1)
+                elif hasattr(data_item, 'revised_prompt') and hasattr(data_item, 'url') and data_item.url:
+                    image_url = data_item.url
+                    logger.debug(f"Found URL with revised prompt: {image_url}")
+                
+                # Check for base64 encoded images
+                elif hasattr(data_item, 'b64_json') and data_item.b64_json:
                     logger.info("Found base64 encoded image")
                     b64_data = data_item.b64_json
                     # Generate filename and save path
@@ -1162,11 +1061,42 @@ class AssetCollector:
                     except Exception as decode_error:
                         logger.error(f"Error saving base64 image: {str(decode_error)}")
                         continue
-                else:
+                
+                # Try accessing as a dictionary for non-standard responses
+                elif hasattr(data_item, '__getitem__'):
+                    try:
+                        # Try common key patterns
+                        for key in ['url', 'image_url', 'image_path']:
+                            if key in data_item:
+                                image_url = data_item[key]
+                                logger.debug(f"Found URL using key '{key}': {image_url}")
+                                break
+                    except (TypeError, KeyError):
+                        pass
+                
+                # If no URL found by direct methods, log detailed response and try to extract from string representation
+                if not image_url:
+                    logger.warning(f"{model_config['model']} direct URL extraction failed, trying string parsing")
+                    logger.debug(f"Data item content: {data_item}")
+                    
+                    # Try to extract URL from string representation as last resort
+                    try:
+                        str_repr = str(data_item)
+                        if 'http://' in str_repr or 'https://' in str_repr:
+                            import re
+                            url_matches = re.findall(r'https?://[^\s"\']+', str_repr)
+                            if url_matches:
+                                image_url = url_matches[0]
+                                logger.debug(f"Found URL via regex: {image_url}")
+                    except Exception as string_error:
+                        logger.error(f"Error extracting URL from string: {str(string_error)}")
+                
+                # Final check if we have a valid URL
+                if not image_url:
                     logger.warning(f"{model_config['model']} response missing URL or b64_json property")
                     continue
-                
-                # For URL-based responses
+                    
+                # For URL-based responses, verify we have a non-empty URL    
                 if not image_url:
                     logger.warning(f"{model_config['model']} returned empty image URL")
                     continue

@@ -39,7 +39,6 @@ class PopupCaptionStyler:
             "font": "Arial-Bold",
             "fontsize": 65,
             "color": "#FFDD33",
-            "bg_color": "rgba(0,0,0,0.7)",
             "stroke_color": "black",
             "stroke_width": 1.5,
             "method": "caption",
@@ -58,7 +57,6 @@ class PopupCaptionStyler:
             "font": "Helvetica-Bold",
             "fontsize": 65,
             "color": "#5599FF",
-            "bg_color": "rgba(0,0,0,0.6)",
             "stroke_color": "black",
             "stroke_width": 1.5,
             "method": "caption",
@@ -68,7 +66,6 @@ class PopupCaptionStyler:
             "font": "Georgia-Bold",
             "fontsize": 65,
             "color": "#66DDAA",
-            "bg_color": "rgba(0,0,0,0.6)",
             "stroke_color": "black",
             "stroke_width": 1.5,
             "method": "caption",
@@ -78,7 +75,8 @@ class PopupCaptionStyler:
     
     # Animation styles for pop-up effects
     ANIMATION_STYLES = [
-        "fade-in", "slide-up", "slide-left", "slide-right"
+        "fade-in", "slide-up", "slide-down", "slide-left", "slide-right", 
+        "zoom-in", "bounce", "typewriter", "pop"
     ]
     
     # Available fonts that should work on most systems
@@ -266,7 +264,11 @@ class PopupCaptionStyler:
             # Determine caption style and animation
             style_name = self._determine_caption_style(text, i)
             style = self.DEFAULT_STYLES[style_name].copy()
-            animation_style = random.choice(self.ANIMATION_STYLES)
+            
+            # Use a safer subset of animations for text transitions
+            # Avoid animations that might cause text to be cut off
+            safe_animations = ["fade-in", "pop", "typewriter"]
+            animation_style = random.choice(safe_animations)
             
             # Create text clip
             txt_clip = self._create_text_clip(
@@ -435,58 +437,104 @@ class PopupCaptionStyler:
         Returns:
             TextClip with animation
         """
-        # Skip if text is empty after cleaning
-        if not text.strip():
-            return None
+        try:
+            # Skip if text is empty after cleaning
+            if not text or not text.strip():
+                return None
+                
+            # Calculate max width as a percentage of video width
+            max_width = int(video_width * 0.85)  # Slightly narrower for better readability
             
-        # Calculate max width as a percentage of video width
-        max_width = int(video_width * 0.85)  # Slightly narrower for better readability
-        
-        # Ensure font size is appropriate for mobile viewing
-        fontsize = style.get("fontsize", 60)  # Default larger fontsize
-        if video_height <= 1280:  # Adjust for smaller screens
-            fontsize = max(40, int(fontsize * 0.85))  # Increased minimum size
-        
-        # Add a background for better readability
-        bg_color = style.get("bg_color", "rgba(0,0,0,0.6)")  # Semi-transparent black background
-        
-        # Create text clip
-        try:
-            txt_clip = TextClip(
-                text,
-                font=style.get("font", "Arial-Bold"),  # Default to bold
-                fontsize=fontsize,
-                color=style.get("color", "white"),
-                bg_color=bg_color,
-                stroke_color=style.get("stroke_color", "black"),
-                stroke_width=style.get("stroke_width", 1.5),
-                method=style.get("method", "caption"),
-                align=style.get("align", "center"),
-                size=(max_width, None)
-            )
+            # Ensure font size is appropriate for mobile viewing
+            fontsize = style.get("fontsize", 60)  # Default larger fontsize
+            if video_height <= 1280:  # Adjust for smaller screens
+                fontsize = max(40, int(fontsize * 0.85))  # Increased minimum size
+            
+            # For longer text, reduce font size to prevent clipping
+            if len(text) > 30:
+                fontsize = int(fontsize * 0.85)
+                
+            if len(text) > 50:
+                fontsize = int(fontsize * 0.85)
+            
+            # Convert text to uppercase
+            text = text.upper()
+            
+            # Create text clip
+            try:
+                txt_clip = TextClip(
+                    text,
+                    font=style.get("font", "Arial-Bold"),  # Default to bold
+                    fontsize=fontsize,
+                    color=style.get("color", "white"),
+                    bg_color="transparent",  # Transparent background
+                    stroke_color=style.get("stroke_color", "black"),
+                    stroke_width=style.get("stroke_width", 1.5),
+                    method=style.get("method", "caption"),
+                    align=style.get("align", "center"),
+                    size=(max_width, None)
+                )
+                
+                # Store the original text as an attribute for later use in animations
+                txt_clip.text = text
+                
+            except Exception as e:
+                logger.error(f"Error creating text clip: {str(e)}")
+                return None
+            
+            # Get clip dimensions to ensure it fits within frame
+            txt_width, txt_height = txt_clip.size
+            
+            # Position in center with safe margins to ensure visibility
+            # Use 10% margin from edges of screen for better visibility
+            margin_x = int(video_width * 0.1)
+            margin_y = int(video_height * 0.1)
+            
+            # Calculate a safe position that ensures text is fully visible
+            safe_x = max(margin_x, min(video_width - margin_x - txt_width, video_width / 2 - txt_width / 2))
+            safe_y = max(margin_y, min(video_height - margin_y - txt_height, video_height / 2 - txt_height / 2))
+            
+            # Use safe position instead of center if text might be cut off
+            if txt_width > video_width - 2 * margin_x or txt_height > video_height - 2 * margin_y:
+                position = (safe_x, safe_y)
+            else:
+                position = ('center', video_height * 0.5)  # Center of screen
+            
+            # Apply animation effect with additional error handling
+            try:
+                animated_clip = self._apply_animation(
+                    txt_clip, 
+                    animation_style, 
+                    position, 
+                    video_width, 
+                    video_height,
+                    start_time,
+                    end_time
+                )
+                return animated_clip
+            except Exception as e:
+                logger.error(f"Error applying animation: {str(e)}")
+                # Fallback to simple positioning without animation
+                try:
+                    return txt_clip.set_position(position).set_start(start_time).set_duration(end_time - start_time)
+                except Exception as e2:
+                    logger.error(f"Error in fallback positioning: {str(e2)}")
+                    # Last resort fallback - return a simple static clip
+                    try:
+                        # Create a simple colored rectangle as fallback if text rendering fails completely
+                        duration = end_time - start_time
+                        color_clip = ColorClip(
+                            size=(max_width, fontsize * 2),
+                            color=(128, 128, 128),
+                            duration=duration
+                        ).set_opacity(0.7).set_position(position).set_start(start_time)
+                        return color_clip
+                    except Exception as e3:
+                        logger.error(f"Critical failure in text clip creation: {str(e3)}")
+                        return None
         except Exception as e:
-            logger.error(f"Error creating text clip: {str(e)}")
+            logger.error(f"Unhandled error in text clip creation: {str(e)}")
             return None
-        
-        # Center all captions for consistency
-        position = ('center', video_height * 0.5)  # Center of screen for better visibility
-        
-        # Apply animation effect
-        try:
-            animated_clip = self._apply_animation(
-                txt_clip, 
-                animation_style, 
-                position, 
-                video_width, 
-                video_height,
-                start_time,
-                end_time
-            )
-            return animated_clip
-        except Exception as e:
-            logger.error(f"Error applying animation: {str(e)}")
-            # Fallback to simple positioning without animation
-            return txt_clip.set_position(position).set_start(start_time).set_duration(end_time - start_time)
     
     def _apply_animation(
         self,
@@ -518,10 +566,280 @@ class PopupCaptionStyler:
         anim_in_duration = min(0.3, duration / 4)
         anim_out_duration = min(0.2, duration / 5)
         
-        # Simple crossfade - most compatible across moviepy versions
-        animated_txt = txt_clip.set_position(position).set_start(start_time).set_duration(duration)
-        animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+        # Set base properties
+        animated_txt = txt_clip.set_duration(duration)
         
+        # Apply different animation effects based on style
+        if animation_style == "fade-in":
+            animated_txt = animated_txt.set_position(position).set_start(start_time)
+            animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        elif animation_style == "slide-up":
+            try:
+                # Ensure position values are numeric before calculations
+                pos_x = position[0]
+                pos_y = position[1]
+                if isinstance(pos_y, str):
+                    # Handle center position by using half the video height
+                    if pos_y == "center":
+                        pos_y = video_height / 2
+                    else:
+                        pos_y = float(pos_y)
+                
+                # Get text dimensions
+                txt_width, txt_height = txt_clip.size
+                
+                # Calculate a safer slide distance - smaller of 50px or 5% of video height
+                slide_distance = min(50, video_height * 0.05)
+                
+                # Ensure the text stays within screen bounds during animation
+                start_pos = (pos_x, pos_y + slide_distance)
+                
+                def slide_up_pos(t):
+                    # Smaller offset for safer animation
+                    offset = max(0, slide_distance * (1 - min(1, t / anim_in_duration)))
+                    return pos_x, pos_y + offset
+                    
+                animated_txt = (animated_txt
+                    .set_position(slide_up_pos)
+                    .set_start(start_time))
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            except Exception as e:
+                logger.error(f"Error in slide-up animation: {str(e)}")
+                # Fallback to simple position
+                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        elif animation_style == "slide-down":
+            try:
+                # Ensure position values are numeric before calculations
+                pos_x = position[0]
+                pos_y = position[1]
+                if isinstance(pos_y, str):
+                    # Handle center position by using half the video height
+                    if pos_y == "center":
+                        pos_y = video_height / 2
+                    else:
+                        pos_y = float(pos_y)
+                
+                # Get text dimensions
+                txt_width, txt_height = txt_clip.size
+                
+                # Calculate a safer slide distance - smaller of 50px or 5% of video height
+                slide_distance = min(50, video_height * 0.05)
+                
+                # Ensure the text stays within screen bounds during animation
+                start_pos = (pos_x, pos_y - slide_distance)
+                
+                def slide_down_pos(t):
+                    # Smaller offset for safer animation
+                    offset = max(0, slide_distance * (1 - min(1, t / anim_in_duration)))
+                    return pos_x, pos_y - offset
+                    
+                animated_txt = (animated_txt
+                    .set_position(slide_down_pos)
+                    .set_start(start_time))
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            except Exception as e:
+                logger.error(f"Error in slide-down animation: {str(e)}")
+                # Fallback to simple position
+                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        elif animation_style == "slide-left":
+            try:
+                # Ensure position values are numeric before calculations
+                pos_x = position[0]
+                pos_y = position[1]
+                if isinstance(pos_x, str):
+                    # Handle center position by using half the video width
+                    if pos_x == "center":
+                        pos_x = video_width / 2
+                    else:
+                        pos_x = float(pos_x)
+                
+                # Get text dimensions
+                txt_width, txt_height = txt_clip.size
+                
+                # Calculate a safer slide distance - smaller of 50px or 5% of video width
+                slide_distance = min(50, video_width * 0.05)
+                
+                # Ensure the text stays within screen bounds during animation
+                start_pos = (pos_x + slide_distance, pos_y)
+                
+                def slide_left_pos(t):
+                    # Smaller offset for safer animation
+                    offset = max(0, slide_distance * (1 - min(1, t / anim_in_duration)))
+                    return pos_x + offset, pos_y
+                    
+                animated_txt = (animated_txt
+                    .set_position(slide_left_pos)
+                    .set_start(start_time))
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            except Exception as e:
+                logger.error(f"Error in slide-left animation: {str(e)}")
+                # Fallback to simple position
+                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        elif animation_style == "slide-right":
+            try:
+                # Ensure position values are numeric before calculations
+                pos_x = position[0]
+                pos_y = position[1]
+                if isinstance(pos_x, str):
+                    # Handle center position by using half the video width
+                    if pos_x == "center":
+                        pos_x = video_width / 2
+                    else:
+                        pos_x = float(pos_x)
+                
+                # Get text dimensions
+                txt_width, txt_height = txt_clip.size
+                
+                # Calculate a safer slide distance - smaller of 50px or 5% of video width
+                slide_distance = min(50, video_width * 0.05)
+                
+                # Ensure the text stays within screen bounds during animation
+                start_pos = (pos_x - slide_distance, pos_y)
+                
+                def slide_right_pos(t):
+                    # Smaller offset for safer animation
+                    offset = max(0, slide_distance * (1 - min(1, t / anim_in_duration)))
+                    return pos_x - offset, pos_y
+                    
+                animated_txt = (animated_txt
+                    .set_position(slide_right_pos)
+                    .set_start(start_time))
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            except Exception as e:
+                logger.error(f"Error in slide-right animation: {str(e)}")
+                # Fallback to simple position
+                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        elif animation_style == "zoom-in":
+            try:
+                def zoom_resize(t):
+                    # Ensure scale factor is always positive to avoid OpenCV error
+                    scale = max(0.5, min(1, 0.5 + 0.5 * min(1, t / anim_in_duration)))
+                    # OpenCV requires scale > 0
+                    return max(0.01, scale)
+                
+                animated_txt = (animated_txt
+                    .set_position(position)
+                    .set_start(start_time)
+                    .resize(zoom_resize)
+                )
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            except Exception as e:
+                logger.error(f"Error in zoom-in animation: {str(e)}")
+                # Fallback to simple fade animation without resize
+                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        elif animation_style == "bounce":
+            def bounce_pos(t):
+                if t < anim_in_duration:
+                    progress = t / anim_in_duration
+                    # Simple bounce effect: sin curve with decreasing amplitude
+                    bounce = 20 * (1 - progress) * abs(np.sin(progress * np.pi * 3))
+                    # Ensure the position is properly handled for string positions
+                    if isinstance(position[0], str):
+                        return position[0], float(position[1]) - bounce
+                    else:
+                        return position[0], position[1] - bounce
+                else:
+                    return position
+                    
+            try:
+                animated_txt = (animated_txt
+                    .set_position(bounce_pos)
+                    .set_start(start_time))
+                animated_txt = animated_txt.crossfadein(anim_in_duration/2).crossfadeout(anim_out_duration)
+            except Exception as e:
+                logger.error(f"Error in bounce animation: {str(e)}")
+                # Fallback to simple fade animation
+                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        elif animation_style == "pop":
+            # Pop effect: quick zoom-in then slightly back out
+            def pop_zoom(t):
+                try:
+                    if t < anim_in_duration:
+                        # Overshoot then settle
+                        progress = min(1, t / anim_in_duration)
+                        if progress < 0.7:
+                            # Zoom in quickly
+                            return min(1.2, progress * 1.5)
+                        else:
+                            # Settle back to normal size
+                            return 1.2 - (progress - 0.7) * (0.2 / 0.3)
+                    return 1.0
+                except Exception as e:
+                    logger.error(f"Error in pop_zoom calculation: {str(e)}")
+                    return 1.0
+                
+            try:
+                animated_txt = (animated_txt
+                    .set_position(position)
+                    .set_start(start_time)
+                    .resize(pop_zoom))
+                animated_txt = animated_txt.crossfadein(anim_in_duration/2).crossfadeout(anim_out_duration)
+            except Exception as e:
+                logger.error(f"Error in pop animation: {str(e)}")
+                # Fallback to simple fade animation
+                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        elif animation_style == "typewriter":
+            # Typewriter effect - characters appear sequentially
+            try:
+                # Access text content safely - TextClip in moviepy doesn't store text directly
+                # Store original text as an attribute for reference
+                if hasattr(txt_clip, "text"):
+                    text_content = txt_clip.text
+                else:
+                    # If the clip doesn't have a text attribute, use the original text
+                    text_content = text
+                    # Add text attribute to the clip for future reference
+                    txt_clip.text = text
+
+                # Calculate how many characters to add per frame
+                total_chars = len(text_content)
+                min_duration = min(0.5, duration / 4)  # At least show all text by 1/4 of the duration
+                
+                # Create a mask function to control character visibility
+                def typewriter_mask(t):
+                    if t < min_duration:
+                        # During type-in, gradually reveal characters
+                        progress = t / min_duration
+                        visible_chars = max(1, int(total_chars * progress))
+                        return text_content[:visible_chars] + " " * (total_chars - visible_chars)
+                    # After type-in, show all characters
+                    return text_content
+                    
+                # Create the animated clip
+                animated_txt = (txt_clip
+                    .set_position(position)
+                    .set_start(start_time)
+                    .set_duration(duration)
+                    .fl(lambda gf, t: gf(t).set_text(typewriter_mask(t)))
+                )
+                
+                # Only fade out, not in
+                animated_txt = animated_txt.crossfadeout(anim_out_duration)
+            except Exception as e:
+                logger.error(f"Error in typewriter animation: {str(e)}")
+                # Fallback to simple fade animation
+                animated_txt = txt_clip.set_position(position).set_start(start_time)
+                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
+        else:  # Default/fallback animation
+            animated_txt = animated_txt.set_position(position).set_start(start_time)
+            animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+            
         return animated_txt
 
 
