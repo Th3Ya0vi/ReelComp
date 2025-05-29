@@ -58,7 +58,7 @@ You can now let ReelComp automatically fetch new TikTok URLs and create a compil
 python -m src.main --auto-fetch --title "Weekly Compilation" --upload
 
 # Customize hashtag and number of videos
-python -m src.main --auto-fetch --fetch-hashtag dance --fetch-count 15 --title "Best Dance TikToks" --upload
+python -m src.main --auto-fetch --fetch-hashtag funny --fetch-count 15 --title "Funniest TiktTok Compilation" --upload
 
 # Automatically fetch and create Shorts (only one Shorts video will be created)
 python -m src.main --auto-fetch --shorts --title "Funny TikTok Shorts"
@@ -86,16 +86,16 @@ You can now generate videos on any topic using AI, without needing TikTok source
 python -m src.main --topic "Benefits of meditation" 
 
 # Create a longer video with specific style
-python -m src.main --topic "How to grow tomatoes" --topic-duration 180 --topic-style educational
+python -m src.main --topic "What is the Stock Market?" --topic-duration 180 --topic-style educational
 
 # Create a YouTube Short about a topic
-python -m src.main --topic "Productivity tips" --topic-shorts
+python -m src.main --topic "How to Buy Your First Stock" --topic-shorts
 
 # Customize voice and language
 python -m src.main --topic "French cuisine history" --language fr-FR --voice-gender female
 
 # Upload directly to YouTube
-python -m src.main --topic "Interesting facts about space" --upload
+python -m src.main --topic "The Difference Between Saving and Investing" --upload
 
 # Test script - For quick testing and development
 # Create a standard video about a specific topic
@@ -190,7 +190,7 @@ Note: GPT Image generation uses your OpenAI API credits. The system is designed 
 
 ```bash
 # Collect videos and create compilation in one command
-python -m src.url_collector.tiktok_scraper --count 10 --output tiktok_urls.txt --hashtag fail && python -m src.main --urls tiktok_urls.txt --title "The Best TikTok Shorts For April Fools' Day
+python -m src.url_collector.tiktok_scraper --count 20 --output tiktok_urls.txt --hashtag fail && python -m src.main --urls tiktok_urls.txt --title "The Best TikTok Shorts For April Fools' Day
 " --upload
 ```
 

@@ -1,99 +1,96 @@
 #!/usr/bin/env python3
 """
-Test Script for Topic-Based Video Generation
-
-This script demonstrates the use of the content_generation module to create videos
-from any topic using AI-generated content.
+Test script for topic-based video generation with verbose logging.
 """
-
-import argparse
-import asyncio
 import os
 import sys
-from pathlib import Path
+import argparse
+import logging
+from loguru import logger
 
-# Fix environment variables before importing the modules
-os.environ["USE_POPUP_CAPTIONS"] = "true"
-
-# Add the parent directory to sys.path to import the project modules
-sys.path.append(str(Path(__file__).parent.parent))
+# Add parent directory to path to allow imports from src
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.utils.config_loader import ConfigLoader
-from src.content_generation import (
-    ContentVideoEngine, ContentShortEngine, 
-    TopicAnalyzer, ScriptGenerator,
-    VoiceoverGenerator, AssetCollector
-)
+from src.content_generation.content_engine import ContentVideoEngine
+from src.utils.file_manager import FileManager
 
-async def generate_topic_video(
-    topic: str, 
-    duration: int = 60, 
-    style: str = "informative",
-    output_format: str = "standard",  # standard, short, tiktok
-    language: str = "en-US"
-):
-    """Generate a video based on the given topic."""
-    
-    print(f"Generating {style} {output_format} video about: {topic}")
-    
-    # Load configuration
-    config_loader = ConfigLoader()
-    config = config_loader.get_config("config.json")
-    
-    # Fix any problematic settings
-    config.ai.use_popup_captions = True
-    
-    # Initialize content engine based on format
-    if output_format == "standard":
-        engine = ContentVideoEngine(config)
-        video_info = await engine.create_content_video(
-            topic=topic,
-            duration=duration,
-            style=style,
-            include_voiceover=True,
-            include_captions=True,
-            language=language
-        )
-    elif output_format in ["short", "tiktok"]:
-        engine = ContentShortEngine(config)
-        if output_format == "short":
-            video_info = await engine.create_shorts_video(
-                topic=topic,
-                include_voiceover=True,
-                include_captions=True,
-                language=language
-            )
-        else:  # tiktok
-            video_info = await engine.create_tiktok_video(
-                topic=topic,
-                include_voiceover=True,
-                language=language
-            )
-    
-    print(f"Video generation complete!")
-    print(f"Title: {video_info['title']}")
-    print(f"Video path: {video_info['video_path']}")
-    print(f"Duration: {duration} seconds")
-    
-    return video_info
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate a video from a topic using AI")
+def main():
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Test topic video generation")
     parser.add_argument("topic", help="Topic to generate a video about")
-    parser.add_argument("--duration", type=int, default=60, help="Target duration in seconds")
-    parser.add_argument("--style", choices=["informative", "entertaining", "educational"], 
-                        default="informative", help="Video style")
-    parser.add_argument("--format", choices=["standard", "short", "tiktok"], 
-                        default="standard", help="Video format")
-    parser.add_argument("--language", default="en-US", help="Language code (e.g., en-US, es-ES)")
+    parser.add_argument("--duration", type=int, default=60, help="Video duration in seconds")
+    parser.add_argument("--style", default="informative", 
+                        choices=["informative", "entertaining", "educational"],
+                        help="Content style")
+    parser.add_argument("--format", default="standard",
+                        choices=["standard", "short", "tiktok"],
+                        help="Video format")
+    parser.add_argument("--language", default="en-US", help="Language code")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     
     args = parser.parse_args()
     
-    asyncio.run(generate_topic_video(
-        topic=args.topic,
-        duration=args.duration,
-        style=args.style,
-        output_format=args.format,
-        language=args.language
-    )) 
+    # Configure logging
+    if args.verbose:
+        logger.remove()
+        logger.add(sys.stderr, level="DEBUG")
+        logger.debug("Verbose logging enabled")
+    
+    # Load configuration
+    config_loader = ConfigLoader()
+    config = config_loader.get_config()
+    
+    # Override config with command line arguments
+    config.ai.language = args.language
+    
+    # Print configuration
+    logger.info(f"Using topic: {args.topic}")
+    logger.info(f"Duration: {args.duration} seconds")
+    logger.info(f"Style: {args.style}")
+    logger.info(f"Format: {args.format}")
+    logger.info(f"Language: {args.language}")
+    
+    # Print API keys (partially redacted)
+    openai_key = config.ai.openai_api_key
+    if openai_key:
+        logger.info(f"OpenAI API Key: {openai_key[:5]}...{openai_key[-4:]} (Length: {len(openai_key)})")
+    else:
+        logger.warning("OpenAI API Key not configured")
+    
+    pixabay_key = config.ai.pixabay_api_key
+    if pixabay_key:
+        logger.info(f"Pixabay API Key: {pixabay_key[:5]}...{pixabay_key[-4:]} (Length: {len(pixabay_key)})")
+    else:
+        logger.warning("Pixabay API Key not configured")
+        
+    # Create file manager
+    file_manager = FileManager(config)
+    
+    # Create content engine
+    content_engine = ContentVideoEngine(config, file_manager)
+    
+    # Generate video
+    logger.info("Generating topic video...")
+    
+    try:
+        if args.format == "standard":
+            video_path = content_engine.create_content_video(
+                args.topic, 
+                duration=args.duration,
+                style=args.style
+            )
+        elif args.format in ["short", "tiktok"]:
+            from src.content_generation.content_engine import ContentShortEngine
+            short_engine = ContentShortEngine(config, file_manager)
+            video_path = short_engine.create_content_short(
+                args.topic,
+                style=args.style
+            )
+            
+        logger.success(f"Video generated successfully: {video_path}")
+    except Exception as e:
+        logger.exception(f"Error generating video: {str(e)}")
+    
+if __name__ == "__main__":
+    main() 

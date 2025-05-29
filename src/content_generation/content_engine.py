@@ -55,7 +55,7 @@ class ContentVideoEngine:
     async def create_content_video(
         self, 
         topic: str, 
-        duration: int = 60,
+        duration: Optional[int] = None,
         style: str = "informative",
         voice_gender: str = "male",
         include_voiceover: bool = True,
@@ -69,7 +69,7 @@ class ContentVideoEngine:
         
         Args:
             topic: Video topic
-            duration: Target duration in seconds
+            duration: Suggested duration in seconds (optional, content will determine actual length)
             style: Video style (informative, entertaining, educational)
             voice_gender: Voice gender for voiceover
             include_voiceover: Whether to include voiceover
@@ -112,6 +112,10 @@ class ContentVideoEngine:
         # Use provided title or generated title
         if title:
             script_data["title"] = title
+            
+        # Get the actual target duration from the script
+        actual_duration = script_data.get("target_duration", script_data.get("estimated_duration", 60))
+        logger.info(f"Script generated with target duration: {actual_duration} seconds")
         
         # Step 2: Generate voiceover if requested
         audio_path = None
@@ -123,13 +127,17 @@ class ContentVideoEngine:
                 language=language
             )
         
-        # Step 3: Collect assets
+        # Step 3: Collect assets based on actual duration
         logger.info("Collecting assets")
         search_terms = script_data.get("search_terms", [topic])
+        # Scale asset collection to content length
+        num_images = max(3, min(10, actual_duration // 10))  # More images for longer content
+        num_videos = max(2, min(5, actual_duration // 20))   # More videos for longer content
+        
         assets = self.asset_collector.collect_assets(
             search_terms=search_terms,
-            num_images=min(5, duration // 10),  # Roughly 1 image per 10 seconds
-            num_videos=min(3, duration // 20)   # Roughly 1 video per 20 seconds
+            num_images=num_images,
+            num_videos=num_videos
         )
         
         # Step 4: Create video
@@ -150,7 +158,8 @@ class ContentVideoEngine:
             "video_path": video_path,
             "audio_path": audio_path,
             "assets": assets,
-            "script_data": script_data
+            "script_data": script_data,
+            "actual_duration": actual_duration
         }
     
     async def create_shorts_video(
@@ -223,9 +232,11 @@ class ContentVideoEngine:
                 audio_clip = AudioFileClip(audio_path)
                 audio_duration = audio_clip.duration
             
-            # Determine video duration
-            target_duration = script_data.get("target_duration", 60)
-            video_duration = audio_duration if audio_duration > 0 else target_duration
+            # Determine video duration - prioritize audio duration, then script duration
+            script_duration = script_data.get("target_duration", script_data.get("estimated_duration", 60))
+            video_duration = audio_duration if audio_duration > 0 else script_duration
+            
+            logger.info(f"Creating video with duration: {video_duration} seconds (audio: {audio_duration}s, script: {script_duration}s)")
             
             # Create a sequence of clips based on script sections and visuals
             clips = []
@@ -355,23 +366,29 @@ class ContentVideoEngine:
                             pass
                         
                         elif i == segments - 1:
-                            # Outro
-                            text_clip = (
-                                TextClip(
-                                    "THANKS FOR WATCHING!", 
-                                    fontsize=60, 
-                                    color='white',
-                                    method='caption',
-                                    size=(self.config.app.video_width, self.config.app.video_height - 200),
-                                    bg_color='transparent'  # Ensure text has transparent background
-                                )
-                                .set_position(('center', 'center'))
-                                .set_start(segment_start)
-                                .set_duration(min(5, segment_duration))
-                            )
-                            clips.append(text_clip)
+                            # Final segment - use content-focused overlay instead of outro
+                            # Only add text if it's related to the topic content
+                            if "story_beats" in script_data and script_data["story_beats"]:
+                                # Use the final story beat content if available
+                                final_beat = script_data["story_beats"][-1]
+                                final_content = final_beat.get("content", "").strip()
+                                if final_content and not any(phrase in final_content.lower() for phrase in ["thanks", "subscribe", "like"]):
+                                    text_clip = (
+                                        TextClip(
+                                            final_content[:50].upper() + "...",  # Keep it short
+                                            fontsize=50, 
+                                            color='white',
+                                            method='caption',
+                                            size=(self.config.app.video_width, self.config.app.video_height - 200),
+                                            bg_color='transparent'
+                                        )
+                                        .set_position(('center', 'center'))
+                                        .set_start(segment_start)
+                                        .set_duration(min(5, segment_duration))
+                                    )
+                                    clips.append(text_clip)
                             
-                            # We no longer need segment-specific backgrounds as we'll use a full video background
+                            # No outro text needed - let the content speak for itself
                             pass
                         
                         else:

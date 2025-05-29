@@ -80,6 +80,22 @@ class AIConfig(BaseSettings):
         """
         Parse environment variables, handling string values with comments.
         """
+        # Handle specific field for OpenAI model
+        if field_name == "openai_model" and isinstance(raw_val, str):
+            if "#" in raw_val:
+                # Remove comment from the model name
+                cleaned_val = raw_val.split("#")[0].strip()
+                logger.debug(f"Cleaned openai_model from '{raw_val}' to '{cleaned_val}'")
+                return cleaned_val
+        
+        # Handle API keys with comments
+        if field_name in ["pixabay_api_key", "pexels_api_key", "unsplash_access_key"] and isinstance(raw_val, str):
+            if "#" in raw_val:
+                # Remove comment from the API key
+                cleaned_val = raw_val.split("#")[0].strip()
+                logger.debug(f"Cleaned {field_name} from '{raw_val}' to '{cleaned_val}'")
+                return cleaned_val
+        
         if field_name == "use_popup_captions" and isinstance(raw_val, str):
             if "#" in raw_val:
                 # Remove comment from the boolean value
@@ -222,15 +238,21 @@ class ConfigLoader:
         """
         for key, value in os.environ.items():
             if isinstance(value, str):
+                # Special handling for OpenAI model to remove inline comments
+                if key == 'OPENAI_MODEL' and '#' in value:
+                    clean_value = value.split('#')[0].strip()
+                    logger.debug(f"Cleaned OpenAI model value from '{value}' to '{clean_value}'")
+                    os.environ[key] = clean_value
+                
                 # Remove comments from booleans
-                if value.lower().startswith(('true', 'false')):
+                elif value.lower().startswith(('true', 'false')):
                     # Extract the actual boolean value
                     if '#' in value:
                         clean_value = value.split('#')[0].strip()
                         os.environ[key] = clean_value
                 
                 # Handle explicitly for use_popup_captions
-                if key == 'USE_POPUP_CAPTIONS' and '#' in value:
+                elif key == 'USE_POPUP_CAPTIONS' and '#' in value:
                     clean_value = value.split('#')[0].strip()
                     os.environ[key] = clean_value
 

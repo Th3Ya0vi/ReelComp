@@ -516,6 +516,16 @@ class AssetCollector:
             logger.warning("Pixabay API key not configured. Add it to your config.json file.")
             return []
         
+        # Clean the API key (strip whitespace and check for issues)
+        pixabay_api_key = self.config.ai.pixabay_api_key
+        # Remove comments if present (e.g., "key # comment")
+        if "#" in pixabay_api_key:
+            pixabay_api_key = pixabay_api_key.split("#")[0].strip()
+            logger.debug(f"Removed comment from Pixabay API key")
+        
+        pixabay_api_key = pixabay_api_key.strip()
+        logger.debug(f"Using Pixabay API key: {pixabay_api_key[:5]}...{pixabay_api_key[-4:]} (Length: {len(pixabay_api_key)})")
+        
         # Check for empty or invalid search terms
         if not search_term or len(search_term.strip()) == 0:
             logger.warning("Empty search term provided for Pixabay video search")
@@ -530,7 +540,7 @@ class AssetCollector:
             # Construct API URL for video search
             api_url = "https://pixabay.com/api/videos/"
             params = {
-                "key": self.config.ai.pixabay_api_key,
+                "key": pixabay_api_key,
                 "q": clean_term,
                 "per_page": max(3, min(max_count, 200)),  # Ensure value is between 3-200
                 "safesearch": "true",  # Ensure safe content
@@ -538,6 +548,8 @@ class AssetCollector:
             }
             
             logger.debug(f"Making Pixabay video API request for term: '{clean_term}'")
+            logger.debug(f"Request URL: {api_url}")
+            logger.debug(f"Request params: {params}")
             
             # Make API request
             response = requests.get(api_url, params=params)
@@ -666,6 +678,16 @@ class AssetCollector:
             logger.warning("Pixabay API key not configured. Add it to your config.json file.")
             return []
         
+        # Clean the API key (strip whitespace and check for issues)
+        pixabay_api_key = self.config.ai.pixabay_api_key
+        # Remove comments if present (e.g., "key # comment")
+        if "#" in pixabay_api_key:
+            pixabay_api_key = pixabay_api_key.split("#")[0].strip()
+            logger.debug(f"Removed comment from Pixabay API key")
+        
+        pixabay_api_key = pixabay_api_key.strip()
+        logger.debug(f"Using Pixabay API key: {pixabay_api_key[:5]}...{pixabay_api_key[-4:]} (Length: {len(pixabay_api_key)})")
+        
         # Check for empty or invalid search terms
         if not search_term or len(search_term.strip()) == 0:
             logger.warning("Empty search term provided for Pixabay image search")
@@ -674,7 +696,7 @@ class AssetCollector:
         # Clean and process the search term
         # Replace problematic characters and limit length
         clean_term = search_term.strip()
-        clean_term = clean_term[:100]  # Limit length
+        clean_term = clean_term[:100]
         
         try:
             # Construct API URL for image search
@@ -682,7 +704,7 @@ class AssetCollector:
             
             # Properly encode parameters individually
             params = {
-                "key": self.config.ai.pixabay_api_key,
+                "key": pixabay_api_key,
                 "q": clean_term,
                 "per_page": max(3, min(max_count, 200)),  # Ensure value is between 3-200
                 "safesearch": "true",  # Ensure safe content
@@ -690,6 +712,8 @@ class AssetCollector:
             }
             
             logger.debug(f"Making Pixabay API request for term: '{clean_term}'")
+            logger.debug(f"Request URL: {api_url}")
+            logger.debug(f"Request params: {params}")
             
             # Make API request with explicit encoding
             response = requests.get(api_url, params=params)

@@ -764,77 +764,85 @@ class PopupCaptionStyler:
                 animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
             
         elif animation_style == "pop":
-            # Pop effect: quick zoom-in then slightly back out
+            # Pop effect - text grows and shrinks
+            anim_in_duration = min(0.3, duration / 3)
+            anim_out_duration = min(0.3, duration / 3)
+            
+            # Create a safer zoom effect function that avoids negative scale values
             def pop_zoom(t):
-                try:
-                    if t < anim_in_duration:
-                        # Overshoot then settle
-                        progress = min(1, t / anim_in_duration)
-                        if progress < 0.7:
-                            # Zoom in quickly
-                            return min(1.2, progress * 1.5)
-                        else:
-                            # Settle back to normal size
-                            return 1.2 - (progress - 0.7) * (0.2 / 0.3)
+                if t < anim_in_duration:
+                    # Zoom in during first phase - ensure minimum scale is 0.1
+                    scale = max(0.1, 0.5 + 1.5 * (t / anim_in_duration))  # Scale from 0.5 to 2.0
+                    return scale
+                elif t > (duration - anim_out_duration):
+                    # Zoom out during last phase - ensure minimum scale is 0.1
+                    scale = max(0.1, 2.0 - 1.5 * ((t - (duration - anim_out_duration)) / anim_out_duration))
+                    return scale
+                else:
+                    # Stay at normal size in the middle
                     return 1.0
-                except Exception as e:
-                    logger.error(f"Error in pop_zoom calculation: {str(e)}")
-                    return 1.0
-                
+            
             try:
-                animated_txt = (animated_txt
-                    .set_position(position)
-                    .set_start(start_time)
-                    .resize(pop_zoom))
+                # Set position and start time first
+                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                
+                # Then apply the resize effect with error handling
+                try:
+                    animated_txt = animated_txt.resize(pop_zoom)
+                except Exception as e:
+                    logger.warning(f"Could not apply pop resize effect: {str(e)}")
+                    # Continue without resize effect
+                
+                # Apply fade effects
                 animated_txt = animated_txt.crossfadein(anim_in_duration/2).crossfadeout(anim_out_duration)
             except Exception as e:
                 logger.error(f"Error in pop animation: {str(e)}")
                 # Fallback to simple fade animation
-                animated_txt = animated_txt.set_position(position).set_start(start_time)
+                animated_txt = txt_clip.set_position(position).set_start(start_time)
                 animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
             
         elif animation_style == "typewriter":
             # Typewriter effect - characters appear sequentially
             try:
-                # Access text content safely - TextClip in moviepy doesn't store text directly
-                # Store original text as an attribute for reference
-                if hasattr(txt_clip, "text"):
-                    text_content = txt_clip.text
-                else:
-                    # If the clip doesn't have a text attribute, use the original text
-                    text_content = text
-                    # Add text attribute to the clip for future reference
-                    txt_clip.text = text
-
-                # Calculate how many characters to add per frame
-                total_chars = len(text_content)
-                min_duration = min(0.5, duration / 4)  # At least show all text by 1/4 of the duration
+                # Ensure we have a valid duration
+                if not hasattr(txt_clip, 'duration') or txt_clip.duration is None:
+                    txt_clip = txt_clip.set_duration(duration)
                 
-                # Create a mask function to control character visibility
-                def typewriter_mask(t):
-                    if t < min_duration:
-                        # During type-in, gradually reveal characters
-                        progress = t / min_duration
-                        visible_chars = max(1, int(total_chars * progress))
-                        return text_content[:visible_chars] + " " * (total_chars - visible_chars)
-                    # After type-in, show all characters
-                    return text_content
+                # Set basic properties for the animated text
+                animated_txt = txt_clip.set_position(position).set_start(start_time)
+                
+                # Calculate fade durations
+                fade_in = min(0.8, max(0.1, duration * 0.3))  # At least 0.1s, at most 30% of duration
+                fade_out = min(0.5, max(0.1, duration * 0.2))  # At least 0.1s, at most 20% of duration
+                
+                # Create a simpler typewriter effect by using a fade-in
+                animated_txt = animated_txt.crossfadein(fade_in).crossfadeout(fade_out)
+                
+                # Add a slight zoom effect to simulate typing animation
+                try:
+                    def gentle_zoom(t):
+                        if t < 0.3 and duration > 1.0:
+                            # Slight zoom at the beginning
+                            return max(0.95, 1.0 - 0.05 * (1 - t/0.3))
+                        return 1.0
                     
-                # Create the animated clip
-                animated_txt = (txt_clip
-                    .set_position(position)
-                    .set_start(start_time)
-                    .set_duration(duration)
-                    .fl(lambda gf, t: gf(t).set_text(typewriter_mask(t)))
-                )
-                
-                # Only fade out, not in
-                animated_txt = animated_txt.crossfadeout(anim_out_duration)
+                    animated_txt = animated_txt.resize(gentle_zoom)
+                except Exception as e:
+                    logger.warning(f"Could not apply gentle zoom for typewriter effect: {str(e)}")
+                    # Continue without the zoom effect
+                    
             except Exception as e:
                 logger.error(f"Error in typewriter animation: {str(e)}")
-                # Fallback to simple fade animation
-                animated_txt = txt_clip.set_position(position).set_start(start_time)
-                animated_txt = animated_txt.crossfadein(anim_in_duration).crossfadeout(anim_out_duration)
+                # Fallback to simple fade animation with minimum durations
+                try:
+                    animated_txt = txt_clip.set_position(position).set_start(start_time)
+                    if not hasattr(animated_txt, 'duration') or animated_txt.duration is None:
+                        animated_txt = animated_txt.set_duration(duration)
+                    animated_txt = animated_txt.crossfadein(0.3).crossfadeout(0.3)
+                except Exception as fallback_error:
+                    logger.error(f"Fallback animation failed: {str(fallback_error)}")
+                    # Last resort - just position without animation
+                    animated_txt = txt_clip.set_position(position).set_start(start_time).set_duration(duration)
             
         else:  # Default/fallback animation
             animated_txt = animated_txt.set_position(position).set_start(start_time)

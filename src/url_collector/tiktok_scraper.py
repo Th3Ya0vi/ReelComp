@@ -177,5 +177,27 @@ def main():
         # We'll update the processed database after successful compilation in the main script
         pass
 
+# Wrapper function to match the import in main.py
+async def scrape_urls(count, hashtag, output_file, save_screenshot=False, processed_db_file="data/processed_urls.json"):
+    """
+    Wrapper for collect_tiktok_video_urls to maintain compatibility with main.py
+    
+    Args:
+        count (int): Number of unique video URLs to collect
+        hashtag (str): Hashtag to target (without #)
+        output_file (str): Path to output file
+        save_screenshot (bool): Not used in current implementation but kept for API compatibility
+        processed_db_file (str): Path to the processed URLs database
+        
+    Returns:
+        Set of collected URLs
+    """
+    return await collect_tiktok_video_urls(
+        count=count,
+        output_file=output_file,
+        hashtag=hashtag,
+        processed_db_file=processed_db_file
+    )
+
 if __name__ == "__main__":
     main() 

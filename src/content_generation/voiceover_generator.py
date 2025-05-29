@@ -229,6 +229,7 @@ class VoiceoverGenerator:
     def _normalize_script_for_tts(self, script: str) -> str:
         """
         Normalize script text for TTS by removing script directions and ensuring proper punctuation.
+        Also removes filler content and subscription-related phrases.
         
         Args:
             script: Original script text
@@ -240,18 +241,50 @@ class VoiceoverGenerator:
         script = re.sub(r'\([^)]*\)', '', script)
         script = re.sub(r'\[[^\]]*\]', '', script)
         
-        # Remove common script directions
-        directions = ['pause', 'emphasis', 'welcome to our video', 'music', 'sound effect', 
-                      'sfx', 'fade in', 'fade out', 'cut to', 'scene', 'title card']
-        for direction in directions:
-            script = re.sub(rf'\b{direction}\b', '', script, flags=re.IGNORECASE)
+        # Remove common script directions and filler content
+        unwanted_phrases = [
+            'pause', 'emphasis', 'welcome to our video', 'music', 'sound effect', 
+            'sfx', 'fade in', 'fade out', 'cut to', 'scene', 'title card',
+            'welcome to', 'thanks for watching', "don't forget to", 'like and subscribe',
+            'in this video', "let's dive into", "today we're going to", 'make sure to',
+            'if you enjoyed', 'hit the like button', 'ring the notification bell',
+            'without further ado', 'so without delay', "let's get started",
+            'subscribe for more', 'hit subscribe', 'smash that like button',
+            'turn on notifications', 'ring that notification bell'
+        ]
+        
+        for phrase in unwanted_phrases:
+            # Remove phrase with various punctuation endings
+            script = re.sub(rf'\b{phrase}\b[^.!?]*[.!?]?', '', script, flags=re.IGNORECASE)
+            # Also remove the phrase if it appears mid-sentence
+            script = re.sub(rf'\b{phrase}\b', '', script, flags=re.IGNORECASE)
+        
+        # Remove common transitional filler phrases
+        filler_transitions = [
+            r'\b(so|now|next|well|alright|okay)\,?\s+',
+            r'\b(you know|um|uh|like)\s+',
+            r'\b(basically|essentially|actually)\s+',
+            r'\blet me tell you\b',
+            r'\byou see\b',
+            r'\bas you can see\b'
+        ]
+        
+        for pattern in filler_transitions:
+            script = re.sub(pattern, ' ', script, flags=re.IGNORECASE)
         
         # Clean up any extra whitespace from removals
         script = re.sub(r'\s+', ' ', script).strip()
         
+        # Remove empty sentences (just punctuation)
+        script = re.sub(r'\s*[.!?]+\s*', '. ', script)
+        script = re.sub(r'^\.\s*', '', script)  # Remove leading period
+        
         # Add period at the end if missing punctuation
-        if script and not script[-1] in ['.', '!', '?', ',', ';', ':', '"', "'", ')']:
+        if script and not script[-1] in ['.', '!', '?']:
             script += '.'
+        
+        # Final cleanup - remove any remaining double spaces
+        script = re.sub(r'\s+', ' ', script).strip()
         
         return script
     

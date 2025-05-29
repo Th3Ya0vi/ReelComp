@@ -6,7 +6,7 @@ Processes user-provided topics into searchable terms and generates content ideas
 
 import json
 import re
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 from loguru import logger
 import openai
@@ -175,16 +175,22 @@ class TopicAnalyzer:
             
             user_prompt = f"Topic: {topic}"
             
+            # Clean the model name if it has comments
+            model_name = self.config.ai.openai_model
+            if isinstance(model_name, str) and "#" in model_name:
+                model_name = model_name.split("#")[0].strip()
+                logger.debug(f"Cleaned model name for OpenAI API call: {model_name}")
+            
             # Call OpenAI API
+            # Remove temperature parameter to use default value (1.0)
             response = self.client.chat.completions.create(
-                model=self.config.ai.openai_model,
+                model=model_name,
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.7,
-                max_tokens=1000
+                max_completion_tokens=1000
             )
             
             # Parse the response
@@ -290,6 +296,12 @@ class TopicAnalyzer:
             }
         
         try:
+            # Clean the model name if it has comments
+            model_name = self.config.ai.openai_model
+            if isinstance(model_name, str) and "#" in model_name:
+                model_name = model_name.split("#")[0].strip()
+                logger.debug(f"Cleaned model name for content structure generation: {model_name}")
+
             # Create system prompt
             system_prompt = """
             You are an expert scriptwriter for informative short-form videos.
@@ -312,14 +324,13 @@ class TopicAnalyzer:
             
             # Call OpenAI API
             response = self.client.chat.completions.create(
-                model=self.config.ai.openai_model,
+                model=model_name,
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.7,
-                max_tokens=800
+                max_completion_tokens=800
             )
             
             # Parse the response
